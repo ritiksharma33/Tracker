@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchSubmissions } from "@/lib/stb";
-import { parseSubmissions } from "@/lib/parseSubmissions";
 import { PROJECTS } from "@/lib/projects";
 
-// This route shells out to a CLI binary, so it must run on the Node
-// runtime (not the Edge runtime, which has no child_process/filesystem).
+// Runs on the Node runtime (fetch is available in both Node and Edge,
+// but keeping Node for consistency with the rest of the app).
 export const runtime = "nodejs";
+
+// Tell Vercel to allow up to 30 seconds for this function.
+// Stays well within the Hobby tier's 10 s default? No – but the new
+// implementation calls the Snorkel REST API directly (no CLI), so it
+// should complete in 1–3 seconds, comfortably within any tier.
+export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
   let body: { projectId?: string; apiKey?: string };
@@ -33,17 +38,15 @@ export async function POST(req: NextRequest) {
 
   if (!result.ok) {
     return NextResponse.json(
-      { error: result.message, detail: result.detail },
+      { error: result.message },
       { status: 502 }
     );
   }
 
-  const parsed = parseSubmissions(result.stdout);
-
   return NextResponse.json({
     project: { id: project.id, name: project.name, label: project.label },
     command: `stb submissions list --project-name "${project.name}"`,
-    submissions: parsed.submissions,
-    total: parsed.submissions.length,
+    submissions: result.submissions,
+    total: result.submissions.length,
   });
 }

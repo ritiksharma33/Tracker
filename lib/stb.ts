@@ -1,83 +1,250 @@
-import { spawn } from "child_process";
-import { mkdtemp, rm } from "fs/promises";
-import { tmpdir } from "os";
-import path from "path";
+/**
+ * Direct HTTP client for the Snorkel DaaS API.
+ *
+ * Replaces the `stb` CLI shell invocation so the app runs on any platform
+ * (Vercel, Netlify, etc.) without requiring a Python binary.
+ *
+ * Auth: every request sends the user's Snorkel API key in the `x-key` header.
+ * Base URL: https://experts.snorkel-ai.com/api/v1 (production)
+ *
+ * Endpoints used:
+ *   GET /users/me                        – resolves project name → UUID
+ *   GET /assignments?project_id=&task=&assignee=&use_cursor=true&limit=100
+ *                                        – paginated assignment list
+ *
+ * State remappings mirror what the stb CLI applies:
+ *   READY_TO_PACKAGE / READY_TO_DELIVER / DELIVERED → ACCEPTED
+ *   COMPLETED → REVIEW_PENDING
+ *   WONT_PAY  → REJECTED
+ */
 
-const STB_BINARY = process.env.STB_BINARY || "stb";
-const COMMAND_TIMEOUT_MS = 60_000;
+const BASE_URL = "https://experts.snorkel-ai.com/api/v1";
 
-type RunResult = {
-  ok: boolean;
-  stdout: string;
-  stderr: string;
-  code: number | null;
+// Mirrors ASSIGNMENT_REMAPPINGS in stb's constants.py
+const ASSIGNMENT_REMAPPINGS: Record<string, string> = {
+  READY_TO_PACKAGE: "ACCEPTED",
+  READY_TO_DELIVER: "ACCEPTED",
+  DELIVERED: "ACCEPTED",
+  COMPLETED: "REVIEW_PENDING",
 };
 
-function runOnce(
-  args: string[],
-  env: NodeJS.ProcessEnv,
-  cwd: string
-): Promise<RunResult> {
-  return new Promise((resolve) => {
-    const child = spawn(STB_BINARY, args, { env, cwd });
+const PAYMENT_REMAPPINGS: Record<string, string> = {
+  WONT_PAY: "REJECTED",
+};
 
-    let stdout = "";
-    let stderr = "";
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-    }, COMMAND_TIMEOUT_MS);
+export type Submission = {
+  index: string;
+  submissionId: string;
+  createdAt: string;
+  folderName: string;
+  assignmentState: string;
+  paymentStatus: string;
+};
 
-    child.stdout.on("data", (d) => (stdout += d.toString()));
-    child.stderr.on("data", (d) => (stderr += d.toString()));
+// ─── helpers ─────────────────────────────────────────────────────────────────
 
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      resolve({ ok: code === 0, stdout, stderr, code });
-    });
-
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      resolve({ ok: false, stdout, stderr: String(err), code: null });
-    });
-  });
+function headers(apiKey: string) {
+  return {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    "x-key": apiKey,
+    "User-Agent": "snorkel-tracker/1.0",
+  };
 }
 
-/**
- * Authenticates and lists submissions for one project, using a per-request
- * temp directory as $HOME so `stb`'s local config/session file never
- * leaks between concurrent users of this dashboard.
- *
- * ⚠️ UNVERIFIED ASSUMPTION — read before deploying for a team:
- * This calls `stb login --token <credential>`, assuming a non-interactive
- * login flag exists. That flag name is a guess; it was not documented
- * anywhere accessible to generate this code from. Before you rely on this,
- * run `stb login --help` and `stb keys --help` yourself and confirm the
- * real way to authenticate non-interactively (it may be a different flag,
- * or an environment variable your CLI reads, e.g. something set via
- * `stb keys`). If it's an env var instead of a flag, delete the
- * `login` step below and instead add it to the `env` object passed to
- * `runOnce` for the submissions call.
- */
-export async function fetchSubmissions(projectName: string, credential: string) {
-  const isolatedEnv: NodeJS.ProcessEnv = {
-    ...process.env,
-    SNORKEL_API_KEY: credential, // Passing auth non-interactively!
-  };
+async function daas<T>(
+  path: string,
+  apiKey: string,
+  method = "GET"
+): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method,
+    headers: headers(apiKey),
+  });
 
-  const list = await runOnce(
-    ["submissions", "list", "--project-name", projectName],
-    isolatedEnv,
-    process.cwd()
-  );
-
-  if (!list.ok) {
-    return {
-      ok: false as const,
-      stage: "list" as const,
-      message: "Fetching submissions failed. The API key might be invalid or you might not have access to this project.",
-      detail: list.stderr || list.stdout,
-    };
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    let detail = "";
+    try {
+      detail = JSON.parse(text)?.detail ?? text;
+    } catch {
+      detail = text;
+    }
+    throw new Error(
+      `Snorkel API error ${res.status} on ${path}: ${detail || res.statusText}`
+    );
   }
 
-  return { ok: true as const, stdout: list.stdout };
+  return res.json() as Promise<T>;
+}
+
+// ─── project resolution ───────────────────────────────────────────────────────
+
+async function resolveProjectId(
+  projectName: string,
+  apiKey: string
+): Promise<string> {
+  const me = await daas<{ attribute_data?: { assigned_projects?: { project_id?: { id?: string }; name?: string }[] } }>("/users/me", apiKey);
+
+  const projects: { id: string; name: string }[] = (
+    me?.attribute_data?.assigned_projects ?? []
+  ).map((p: { project_id?: { id?: string }; name?: string }) => ({
+    id: p?.project_id?.id ?? "",
+    name: p?.name ?? "",
+  }));
+
+  const match = projects.find(
+    (p) => p.name.toLowerCase() === projectName.toLowerCase()
+  );
+
+  if (!match) {
+    const available = projects.map((p) => p.name).join(", ");
+    throw new Error(
+      `Project "${projectName}" not found in your assigned projects. Available: ${available || "(none)"}`
+    );
+  }
+
+  return match.id;
+}
+
+// ─── task-type resolution ─────────────────────────────────────────────────────
+
+async function getSubmissionTaskType(
+  projectId: string,
+  apiKey: string
+): Promise<string> {
+  const project = await daas<{ task_infos?: { task_category?: string; task_type?: string }[] }>(
+    `/projects/${projectId}`,
+    apiKey
+  );
+
+  const info = (project?.task_infos ?? []).find(
+    (t) => t.task_category === "SUBMISSION"
+  );
+
+  if (!info?.task_type) {
+    throw new Error(
+      `Project ${projectId} has no SUBMISSION task type configured.`
+    );
+  }
+
+  return info.task_type;
+}
+
+// ─── paginated assignments ────────────────────────────────────────────────────
+
+async function fetchAllAssignments(
+  projectId: string,
+  taskType: string,
+  assigneeEmail: string,
+  apiKey: string
+): Promise<Record<string, unknown>[]> {
+  const base = `/assignments?project_id=${projectId}&task=${encodeURIComponent(taskType)}&assignee=${encodeURIComponent(assigneeEmail)}`;
+
+  const all: Record<string, unknown>[] = [];
+  let cursor: string | null = null;
+
+  while (true) {
+    let path = `${base}&use_cursor=true&limit=100`;
+    if (cursor) path += `&cursor=${encodeURIComponent(cursor)}`;
+
+    const page = await daas<{
+      assignments?: Record<string, unknown>[];
+      next_cursor?: string;
+      has_more?: boolean;
+    }>(path, apiKey);
+
+    const assignments = page?.assignments ?? [];
+
+    for (const a of assignments) {
+      if (a.status === "REJECTED") continue;
+      all.push(a);
+    }
+
+    cursor = page.next_cursor ?? null;
+    if (!page.has_more || !cursor) break;
+  }
+
+  return all;
+}
+
+// ─── timestamp formatting ─────────────────────────────────────────────────────
+
+function formatCompactTimestamp(iso: unknown): string {
+  if (!iso || typeof iso !== "string") return "";
+  try {
+    const d = new Date(iso);
+    const mo = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(d.getUTCDate()).padStart(2, "0");
+    const hh = String(d.getUTCHours()).padStart(2, "0");
+    const mm = String(d.getUTCMinutes()).padStart(2, "0");
+    return `${mo}/${day} ${hh}:${mm}`;
+  } catch {
+    return "";
+  }
+}
+
+function extractId(v: unknown): string {
+  if (!v) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "object" && v !== null && "id" in v)
+    return String((v as { id: unknown }).id);
+  return "";
+}
+
+// ─── public API ──────────────────────────────────────────────────────────────
+
+export type FetchResult =
+  | { ok: true; submissions: Submission[] }
+  | { ok: false; message: string; detail?: string };
+
+export async function fetchSubmissions(
+  projectName: string,
+  apiKey: string
+): Promise<FetchResult> {
+  try {
+    // 1. Who am I? (also validates the key)
+    const me = await daas<{ email?: string; attribute_data?: { assigned_projects?: unknown[] } }>(
+      "/users/me",
+      apiKey
+    );
+    const email = me?.email ?? "";
+    if (!email) throw new Error("Could not read user email from /users/me");
+
+    // 2. Resolve project name → UUID
+    const projectId = await resolveProjectId(projectName, apiKey);
+
+    // 3. Get the submission task-type string for this project
+    const taskType = await getSubmissionTaskType(projectId, apiKey);
+
+    // 4. Fetch all paginated assignments
+    const assignments = await fetchAllAssignments(
+      projectId,
+      taskType,
+      email,
+      apiKey
+    );
+
+    // 5. Shape into Submission objects
+    const submissions: Submission[] = assignments.map((a, idx) => {
+      const rawState = String(a.status ?? "");
+      const rawPayment = String(a.payment_status ?? "");
+
+      return {
+        index: String(idx + 1),
+        submissionId:
+          extractId(a.submission_id) || extractId(a.task_id),
+        createdAt: formatCompactTimestamp(a.created_at),
+        folderName: "",
+        assignmentState: ASSIGNMENT_REMAPPINGS[rawState] ?? rawState,
+        paymentStatus: PAYMENT_REMAPPINGS[rawPayment] ?? rawPayment,
+      };
+    });
+
+    return { ok: true, submissions };
+  } catch (err: unknown) {
+    const msg =
+      err instanceof Error ? err.message : "An unexpected error occurred.";
+    return { ok: false, message: msg };
+  }
 }
