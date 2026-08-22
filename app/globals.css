@@ -1,0 +1,454 @@
+/* ---------------------------------------------------------------
+   Design tokens
+   Direction: a quiet "control room" board, not a SaaS dashboard.
+   The subject is a CLI (stb / Terminal-Bench), so the signature
+   element is a live command line that echoes exactly what's being
+   run server-side — the UI never hides what it's doing.
+   ----------------------------------------------------------------*/
+:root {
+  --bg: #10201a;
+  --bg-elevated: #16261f;
+  --surface: #1c2e26;
+  --surface-hover: #23392f;
+  --border: #2f4438;
+  --border-soft: #253a2f;
+
+  --text-primary: #eef2ec;
+  --text-muted: #a7bab0;
+  --text-faint: #6f8579;
+
+  --accent: #cc8a52;
+  --accent-strong: #e0a06a;
+  --accent-soft: rgba(204, 138, 82, 0.14);
+
+  --status-accepted: #8fb37e;
+  --status-accepted-bg: rgba(143, 179, 126, 0.14);
+  --status-revision: #d17a55;
+  --status-revision-bg: rgba(209, 122, 85, 0.16);
+  --status-review: #dcb154;
+  --status-review-bg: rgba(220, 177, 84, 0.15);
+  --status-eval: #a996c4;
+  --status-eval-bg: rgba(169, 150, 196, 0.15);
+  --status-payout: #6fb0a3;
+  --status-payout-bg: rgba(111, 176, 163, 0.16);
+  --status-pending: #96a89c;
+  --status-pending-bg: rgba(150, 168, 156, 0.14);
+
+  --font-display: "Fraunces", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+
+  --radius: 10px;
+  --radius-sm: 6px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  background: radial-gradient(1200px 600px at 12% -10%, #16281f 0%, var(--bg) 55%);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text-primary);
+}
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ---------------------------------------------------------------
+   Page shell
+   ----------------------------------------------------------------*/
+.page {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 56px 24px 96px;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin: 0 0 10px;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 40px;
+  line-height: 1.1;
+  margin: 0 0 10px;
+  color: var(--text-primary);
+}
+
+.title em {
+  font-style: normal;
+  color: var(--accent-strong);
+}
+
+.subtitle {
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1.55;
+  max-width: 56ch;
+  margin: 0 0 40px;
+}
+
+.subtitle code {
+  font-family: var(--font-mono);
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+/* ---------------------------------------------------------------
+   Controls
+   ----------------------------------------------------------------*/
+.panel {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: 1.1fr 1.4fr auto;
+  gap: 14px;
+  align-items: end;
+}
+
+@media (max-width: 640px) {
+  .controls {
+    grid-template-columns: 1fr;
+  }
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+.field select,
+.field input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  padding: 11px 12px;
+  font-size: 14px;
+  font-family: var(--font-body);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.field select:hover,
+.field input:hover {
+  border-color: var(--accent);
+}
+
+.field input::placeholder {
+  color: var(--text-faint);
+}
+
+.hint {
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+.fetch-btn {
+  background: var(--accent);
+  color: #17120b;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 12px 20px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.fetch-btn:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
+.fetch-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.fetch-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ---------------------------------------------------------------
+   Signature element: the live command echo
+   ----------------------------------------------------------------*/
+.command-bar {
+  margin-top: 18px;
+  background: #0d1712;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--status-accepted);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  overflow-x: auto;
+}
+
+.command-bar .prompt {
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.command-bar .cmd {
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------
+   Status
+   ----------------------------------------------------------------*/
+.status-line {
+  margin-top: 16px;
+  font-size: 13.5px;
+  color: var(--text-muted);
+  min-height: 20px;
+}
+
+.status-line.error {
+  color: var(--status-revision);
+}
+
+/* ---------------------------------------------------------------
+   Summary chips
+   ----------------------------------------------------------------*/
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 28px 0 18px;
+}
+
+.chip {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-soft);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.chip .n {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+/* ---------------------------------------------------------------
+   Board (table)
+   ----------------------------------------------------------------*/
+.board-wrap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.board {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+.board thead th {
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  background: var(--bg-elevated);
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 500;
+}
+
+.board tbody td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+
+.board tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.board tbody tr:hover td {
+  background: var(--surface-hover);
+}
+
+.board .idx {
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+  width: 32px;
+}
+
+.board .folder {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.board .folder.empty::before {
+  content: "—";
+  color: var(--text-faint);
+}
+
+.board .created {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* ---------------------------------------------------------------
+   Empty / loading states
+   ----------------------------------------------------------------*/
+.empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.empty-state .big {
+  font-family: var(--font-display);
+  font-size: 20px;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.footer-note {
+  margin-top: 40px;
+  font-size: 12px;
+  color: var(--text-faint);
+  line-height: 1.6;
+}
+
+.footer-note a {
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------
+   Task ID column
+   ----------------------------------------------------------------*/
+.board .task-id {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.board .task-id button:hover {
+  background: var(--surface-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+/* ---------------------------------------------------------------
+   Pagination
+   ----------------------------------------------------------------*/
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.page-btn {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.page-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.page-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.page-info {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+}
