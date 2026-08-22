@@ -192,6 +192,50 @@ function extractId(v: unknown): string {
   return "";
 }
 
+// ─── folder name fetching ─────────────────────────────────────────────────────
+
+async function getFolderName(
+  assignmentId: string,
+  apiKey: string
+): Promise<string> {
+  try {
+    const task = await daas<{
+      task_documents?: {
+        submission_document?: Record<string, unknown>;
+      }[];
+    }>(`/assignment/${assignmentId}`, apiKey);
+
+    const docs = task?.task_documents ?? [];
+    for (const doc of docs) {
+      const subDoc = doc.submission_document;
+      if (!subDoc) continue;
+
+      // 1. Check coding zip widget
+      const zip = subDoc["upload_a_zip_file"] as Record<string, unknown> | undefined;
+      if (zip?.s3Key && typeof zip.filename === "string") {
+        return zip.filename.endsWith(".zip")
+          ? zip.filename.slice(0, -4)
+          : zip.filename;
+      }
+
+      // 2. Check general file uploaders
+      for (const [k, v] of Object.entries(subDoc)) {
+        if (k.startsWith("s3fileuploader-") && v && typeof v === "object") {
+          const w = v as Record<string, unknown>;
+          if (w.s3Key && typeof w.filename === "string") {
+            return w.filename.endsWith(".zip")
+              ? w.filename.slice(0, -4)
+              : w.filename;
+          }
+        }
+      }
+    }
+  } catch (e) {
+    // Ignore fetch errors for individual folder names to avoid failing the whole list
+  }
+  return "";
+}
+
 // ─── public API ──────────────────────────────────────────────────────────────
 
 export type FetchResult =
@@ -235,11 +279,28 @@ export async function fetchSubmissions(
         submissionId:
           extractId(a.submission_id) || extractId(a.task_id),
         createdAt: formatCompactTimestamp(a.created_at),
-        folderName: "",
+        folderName: "", // Populated below
         assignmentState: ASSIGNMENT_REMAPPINGS[rawState] ?? rawState,
         paymentStatus: PAYMENT_REMAPPINGS[rawPayment] ?? rawPayment,
       };
     });
+
+    // 6. Fetch folder names concurrently (in chunks of 20 to respect rate limits)
+    for (let i = 0; i < submissions.length; i += 20) {
+      const chunk = submissions.slice(i, i + 20);
+      const assignmentIds = assignments
+        .slice(i, i + 20)
+        .map((a) => extractId(a.assignment_id));
+
+      await Promise.all(
+        chunk.map(async (sub, idx) => {
+          const aid = assignmentIds[idx];
+          if (aid) {
+            sub.folderName = await getFolderName(aid, apiKey);
+          }
+        })
+      );
+    }
 
     return { ok: true, submissions };
   } catch (err: unknown) {
