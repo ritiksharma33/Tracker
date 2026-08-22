@@ -261,7 +261,17 @@ export async function fetchAssignments(
     const projectId = await resolveProjectId(projectName, apiKey);
 
     // 3. Get the specific task-type string for this project and category
-    const taskType = await getTaskType(projectId, category, apiKey);
+    let taskType: string;
+    try {
+      taskType = await getTaskType(projectId, category, apiKey);
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message.includes("task type configured")) {
+        // The project lacks this task type (e.g. no SUBMISSION tasks).
+        // Instead of erroring out, just return 0 submissions gracefully.
+        return { ok: true, submissions: [] };
+      }
+      throw e;
+    }
 
     // 4. Fetch all paginated assignments
     const assignments = await fetchAllAssignments(
