@@ -138,8 +138,6 @@ export default function Page() {
         )
       : [];
 
-  const activeCategory = projectId === "sentinel-ultra" ? category : "SUBMISSION";
-
   return (
     <main className="page">
       <p className="eyebrow">Snorkel · Terminal-Bench</p>
