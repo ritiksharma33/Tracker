@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchSubmissions } from "@/lib/stb";
+import { fetchAssignments } from "@/lib/stb";
 import { PROJECTS } from "@/lib/projects";
 
 // Runs on the Node runtime (fetch is available in both Node and Edge,
@@ -13,14 +13,14 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
-  let body: { projectId?: string; apiKey?: string };
+  let body: { projectId?: string; apiKey?: string; category?: string };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Malformed request." }, { status: 400 });
   }
 
-  const { projectId, apiKey } = body;
+  const { projectId, apiKey, category = "SUBMISSION" } = body;
 
   if (!projectId || !apiKey) {
     return NextResponse.json(
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unknown project." }, { status: 400 });
   }
 
-  const result = await fetchSubmissions(project.name, apiKey);
+  const result = await fetchAssignments(project.name, category, apiKey);
 
   if (!result.ok) {
     return NextResponse.json(
@@ -43,9 +43,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const cmdCategory = category.toLowerCase() + "s";
   return NextResponse.json({
     project: { id: project.id, name: project.name, label: project.label },
-    command: `stb submissions list --project-name "${project.name}"`,
+    command: `stb ${cmdCategory} list --project-name "${project.name}"`,
     submissions: result.submissions,
     total: result.submissions.length,
   });

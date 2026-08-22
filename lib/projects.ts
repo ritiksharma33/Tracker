@@ -20,6 +20,11 @@ export const PROJECTS: Project[] = [
     name: "CDG_Starfish_Pilot_uTYAV_Coding",
     label: "Starfish Pilot (Coding)",
   },
+  {
+    id: "sentinel-ultra",
+    name: "CDG_Sentinel_Ultra_00000",
+    label: "Sentinel Ultra",
+  },
   // Add more projects here, for example:
   // {
   //   id: "another-project",

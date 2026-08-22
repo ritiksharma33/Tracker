@@ -109,8 +109,9 @@ async function resolveProjectId(
 
 // ─── task-type resolution ─────────────────────────────────────────────────────
 
-async function getSubmissionTaskType(
+async function getTaskType(
   projectId: string,
+  category: string,
   apiKey: string
 ): Promise<string> {
   const project = await daas<{ task_infos?: { task_category?: string; task_type?: string }[] }>(
@@ -119,12 +120,12 @@ async function getSubmissionTaskType(
   );
 
   const info = (project?.task_infos ?? []).find(
-    (t) => t.task_category === "SUBMISSION"
+    (t) => t.task_category === category
   );
 
   if (!info?.task_type) {
     throw new Error(
-      `Project ${projectId} has no SUBMISSION task type configured.`
+      `Project ${projectId} has no ${category} task type configured.`
     );
   }
 
@@ -242,8 +243,9 @@ export type FetchResult =
   | { ok: true; submissions: Submission[] }
   | { ok: false; message: string; detail?: string };
 
-export async function fetchSubmissions(
+export async function fetchAssignments(
   projectName: string,
+  category: string, // e.g. "SUBMISSION", "REVIEW", "ADJUDICATION"
   apiKey: string
 ): Promise<FetchResult> {
   try {
@@ -258,8 +260,8 @@ export async function fetchSubmissions(
     // 2. Resolve project name → UUID
     const projectId = await resolveProjectId(projectName, apiKey);
 
-    // 3. Get the submission task-type string for this project
-    const taskType = await getSubmissionTaskType(projectId, apiKey);
+    // 3. Get the specific task-type string for this project and category
+    const taskType = await getTaskType(projectId, category, apiKey);
 
     // 4. Fetch all paginated assignments
     const assignments = await fetchAllAssignments(

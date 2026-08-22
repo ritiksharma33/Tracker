@@ -61,6 +61,7 @@ function CopyableId({ id }: { id: string }) {
 
 export default function Page() {
   const [projectId, setProjectId] = useState(PROJECTS[0]?.id ?? "");
+  const [category, setCategory] = useState("SUBMISSION");
   const [apiKey, setApiKey] = useState("");
   const [state, setState] = useState<FetchState>({ phase: "idle" });
   const [currentPage, setCurrentPage] = useState(1);
@@ -70,9 +71,10 @@ export default function Page() {
     [projectId]
   );
 
+  const cmdCategory = category.toLowerCase() + "s";
   const previewCommand = selectedProject
-    ? `stb submissions list --project-name "${selectedProject.name}"`
-    : "stb submissions list --project-name \"…\"";
+    ? `stb ${cmdCategory} list --project-name "${selectedProject.name}"`
+    : `stb ${cmdCategory} list --project-name "…"`;
 
   async function handleFetch() {
     if (!projectId || !apiKey.trim()) {
@@ -87,7 +89,7 @@ export default function Page() {
       const res = await fetch("/api/submissions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, apiKey: apiKey.trim() }),
+        body: JSON.stringify({ projectId, apiKey: apiKey.trim(), category }),
       });
 
       const data = await res.json();
@@ -138,7 +140,7 @@ export default function Page() {
     <main className="page">
       <p className="eyebrow">Snorkel · Terminal-Bench</p>
       <h1 className="title">
-        Submission <em>board</em>
+        {category === "SUBMISSION" ? "Submission" : category === "REVIEW" ? "Review" : "Adjudication"} <em>board</em>
       </h1>
 
       <section className="panel">
@@ -155,6 +157,19 @@ export default function Page() {
                   {p.label}
                 </option>
               ))}
+            </select>
+          </div>
+
+          <div className="field">
+            <label htmlFor="category">Category</label>
+            <select
+              id="category"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+            >
+              <option value="SUBMISSION">Submissions</option>
+              <option value="REVIEW">Reviews</option>
+              <option value="ADJUDICATION">Adjudications</option>
             </select>
           </div>
 
@@ -204,7 +219,7 @@ export default function Page() {
             {state.submissions.length === 0 ? (
               <div className="empty-state">
                 <p className="big">Nothing here yet</p>
-                <p>No submissions found for {state.projectLabel}.</p>
+                <p>No {category.toLowerCase()}s found for {state.projectLabel}.</p>
               </div>
             ) : (
               <>
@@ -251,7 +266,7 @@ export default function Page() {
                       ← Previous
                     </button>
                     <span className="page-info">
-                      Page {currentPage} of {totalPages} &nbsp;·&nbsp; {state.submissions.length} submissions
+                      Page {currentPage} of {totalPages} &nbsp;·&nbsp; {state.submissions.length} {category.toLowerCase()}s
                     </span>
                     <button
                       className="page-btn"
