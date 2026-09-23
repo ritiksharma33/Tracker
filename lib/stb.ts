@@ -88,10 +88,11 @@ async function resolveProjectId(
 
   const projects: { id: string; name: string }[] = (
     me?.attribute_data?.assigned_projects ?? []
-  ).map((p: { project_id?: { id?: string }; name?: string }) => ({
-    id: p?.project_id?.id ?? "",
+  ).map((p: any) => ({
+    id: extractId(p?.project_id),
     name: p?.name ?? "",
   }));
+
 
   const match = projects.find(
     (p) => p.name.toLowerCase() === projectName.toLowerCase()
