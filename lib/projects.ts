@@ -16,6 +16,11 @@ export type Project = {
 
 export const PROJECTS: Project[] = [
   {
+    id: "starfish-v3",
+    name: "CDG_Starfish_Pilot_uTYAV_Coding_v3",
+    label: "Starfish Pilot (Coding) v3",
+  },
+  {
     id: "starfish",
     name: "CDG_Starfish_Pilot_uTYAV_Coding",
     label: "Starfish Pilot (Coding)",
@@ -25,10 +30,4 @@ export const PROJECTS: Project[] = [
     name: "CDG_Sentinel_Ultra_00000",
     label: "Sentinel Ultra",
   },
-  // Add more projects here, for example:
-  // {
-  //   id: "another-project",
-  //   name: "CDG_Another_Project_Name",
-  //   label: "Another Project",
-  // },
 ];
